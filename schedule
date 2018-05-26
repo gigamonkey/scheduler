@@ -5,20 +5,12 @@ Schedule 1:1s with a bunch of people.
 """
 
 from apiclient.discovery import build
+from credentials import creds
 from datetime import datetime, time, timedelta, timezone
 from httplib2 import Http
 from oauth2client import file, client, tools
 
 import arrow
-
-# Setup the Calendar API
-SCOPES = 'https://www.googleapis.com/auth/calendar.readonly'
-store = file.Storage('credentials.json')
-creds = store.get()
-if not creds or creds.invalid:
-    flow = client.flow_from_clientsecrets('client_secret.json', SCOPES)
-    creds = tools.run_flow(flow, store)
-service = build('calendar', 'v3', http=creds.authorize(Http()))
 
 class Interval():
 
@@ -49,6 +41,8 @@ class Interval():
 
 def busy(emails, start_day, start_time, end_time, days):
     "Map of intervals each person is busy according to their calendar."
+
+    service = build('calendar', 'v3', http=creds.authorize(Http()))
 
     data = service.freebusy().query(body = {
         'timeMin': datetime.combine(start_day, start_time).isoformat(),
@@ -173,14 +167,13 @@ if __name__ == '__main__':
     start_day  = datetime.today()
     start_time = time(9, 0, tzinfo=pacific)
     end_time   = time(14, 0, tzinfo=pacific)
-    days       = 7
-    all_slots  = slots(start_day, start_time, end_time, days)
+    days       = 30
 
     emails = [ line[:-1] for line in fileinput.input() ]
 
-    principal = emails[0]
-    busy_times = busy(emails, start_day, start_time, end_time, days)
-
+    principal      = emails[0]
+    busy_times     = busy(emails, start_day, start_time, end_time, days)
+    all_slots      = slots(start_day, start_time, end_time, days)
     possible_slots = free_slots(all_slots, busy_times[principal])
 
     people = { p: set(free_slots(possible_slots, busy_times[p])) for p in busy_times if p != principal }
