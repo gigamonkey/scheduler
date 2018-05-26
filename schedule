@@ -8,7 +8,6 @@ from apiclient.discovery import build
 from credentials import creds
 from datetime import datetime, time, timedelta, timezone
 from httplib2 import Http
-from oauth2client import file, client, tools
 
 import arrow
 
