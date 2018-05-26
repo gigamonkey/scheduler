@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+
+"""
+Schedule 1:1s with a bunch of people.
+"""
+
+from apiclient.discovery import build
+from datetime import datetime, time, timedelta, timezone
+from httplib2 import Http
+from oauth2client import file, client, tools
+
+import arrow
+import json
+
+# Setup the Calendar API
+SCOPES = 'https://www.googleapis.com/auth/calendar.readonly'
+store = file.Storage('credentials.json')
+creds = store.get()
+if not creds or creds.invalid:
+    flow = client.flow_from_clientsecrets('client_secret.json', SCOPES)
+    creds = tools.run_flow(flow, store)
+service = build('calendar', 'v3', http=creds.authorize(Http()))
+
+class Interval():
+
+    "Represent a time interval as start (inclusive) and end (exlcusive)."
+
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+
+    def __eq__(self, other):
+        return self.start == other.start and self.end == other.end
+
+    def __hash__(self):
+        return hash((self.start, self.end))
+
+    def __repr__(self):
+        return '{} to {}'.format(self.start.isoformat(), self.end.isoformat())
+
+    def before(self, other):
+        return self.end <= other.start
+
+    def after(self, other):
+        return self.start >= other.end
+
+    def from_calendar(cal):
+        return Interval(arrow.get(cal['start']), arrow.get(cal['end']))
+
+
+def freebusy(emails, start_day, start_time, end_time, days):
+    "Freebusy results from Calendar API."
+
+    return service.freebusy().query(body={
+        'timeMin': datetime.combine(start_day, start_time).isoformat(),
+        'timeMax': datetime.combine(start_day + timedelta(days=days), end_time).isoformat(),
+        'items': [ { 'id': e } for e in emails ],
+        'timeZone': '-07:00'
+    }).execute()
+
+
+
+def free_slots(slots, busy):
+    "Pick intervals in slots that do not overlap any of the busy intervals."
+    slots = slots[:]
+    busy = busy[:]
+    while slots and busy:
+        s = slots[0]
+        b = busy[0]
+        if s.before(b):
+            yield slots.pop(0)
+        elif s.after(b):
+            busy.pop(0)
+        else:
+            slots.pop(0)
+
+
+def slots(start_day, start_time, end_time, days=1, daysofweek={0,1,2,3,4}):
+    """Get all slots during working hours starting on `start_day` and
+extending for `days` days. Doesn't know about holidays."""
+    ss = []
+    for d in range(days):
+        day = start_day + timedelta(days=d)
+        if day.weekday() in daysofweek:
+            start  = datetime.combine(day, start_time)
+            end    = datetime.combine(day, end_time)
+            length = timedelta(minutes=30)
+
+            s = start
+            while s < end:
+                e = s + length
+                ss.append(Interval(s, e))
+                s = e
+    return ss
+
+
+def remove_busy(slots, busy):
+    return list(free_slots(slots, [ Interval.from_calendar(x) for x in busy ]))
+
+
+#
+# Search for schedules.
+#
+
+def search(people, slots, i):
+
+    if people is None:
+        return None
+
+    elif solved(people):
+        yield to_schedule(people)
+
+    else:
+        slot = slots[i]
+        for p in people:
+            if slot in people[p]:
+                new_people = assign(copy_people(people), p, slot)
+                yield from search(new_people, slots, i + 1)
+
+def solved(people):
+    return all(len(slots) == 1 for slots in people.values())
+
+
+def to_schedule(people):
+    return sorted(((p, next(iter(slots))) for p, slots in people.items()), key=lambda x: x[1].start)
+
+
+def copy_people(people):
+    return { p : set(s) for p, s in people.items() }
+
+
+def assign(people, p, s):
+    "Assign slot s to person p, propagating consequences."
+    slots = people[p] - { s }
+    return people if all(eliminate(people, p, s1) for s1 in slots) else None
+
+
+def eliminate(people, p, s):
+    "Eliminate the slot s from person p and propagate consequences."
+    if s in people[p]:
+        people[p].remove(s)
+
+        if len(people[p]) == 0:
+            return None
+        elif len(people[p]) == 1:
+            s2 = list(people[p])[0]
+            other_people = [ p2 for p2 in people if p2 != p ]
+            if not all(eliminate(people, p2, s2) for p2 in other_people):
+                return None
+
+    return people
+
+
+def schedules(people, slots):
+    return search(people, slots, 0)
+
+
+def schedule(people, slots):
+    return next(schedules(people, slots))
+
+
+def display_schedule(schedule):
+    for p, s in schedule:
+        print('{:30} {}'.format(p, s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
+
+
+if __name__ == '__main__':
+
+    import sys
+    import fileinput
+
+    pacific    = timezone(timedelta(hours=-7))
+    start_day  = datetime.today()
+    start_time = time(9, 0, tzinfo=pacific)
+    end_time   = time(14, 0, tzinfo=pacific)
+    days       = 7
+    all_slots  = slots(start_day, start_time, end_time, days)
+
+    emails = [ line[:-1] for line in fileinput.input() ]
+
+    principal = emails[0]
+    calendars = freebusy(emails, start_day, start_time, end_time, days)['calendars']
+
+    possible_slots = remove_busy(all_slots, calendars[principal]['busy'])
+
+    people = { p: set(remove_busy(possible_slots, calendars[p]['busy'])) for p in calendars if p != principal }
+
+    display_schedule(schedule(people, possible_slots))
