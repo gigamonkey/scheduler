@@ -98,7 +98,8 @@ extending for `days` days. Doesn't know about holidays."""
 # Search for schedules.
 #
 
-def search(people, slots, i):
+def schedules(people):
+    "Generator of all possible schedules."
 
     if people is None:
         return None
@@ -107,11 +108,11 @@ def search(people, slots, i):
         yield to_schedule(people)
 
     else:
-        slot = slots[i]
-        for p in people:
-            if slot in people[p]:
-                new_people = assign(copy_people(people), p, slot)
-                yield from search(new_people, slots, i + 1)
+        unscheduled = [ p for p in people if len(people[p]) > 1 ]
+        for p in sorted(unscheduled, key=lambda p: len(people[p])):
+            for s in sorted(people[p], key=lambda s: s.start):
+                new_people = assign(copy_people(people), p, s)
+                yield from schedules(new_people)
 
 
 def everyone_scheduled(people):
@@ -147,14 +148,9 @@ def eliminate(people, p, s):
     return people
 
 
-def schedules(people, slots):
-    "Generator of all possible schedules."
-    return search(people, slots, 0)
-
-
-def schedule(people, slots):
+def schedule(people):
     "The first schedule found."
-    return next(schedules(people, slots))
+    return next(schedules(people))
 
 
 if __name__ == '__main__':
@@ -177,5 +173,10 @@ if __name__ == '__main__':
 
     people = { p: set(free_slots(possible_slots, busy_times[p])) for p in busy_times if p != principal }
 
-    for p, s in schedule(people, possible_slots):
+    for p, slots in people.items():
+        if not slots:
+            print('{} has no free slots!'.format(p))
+            exit()
+
+    for p, s in schedule(people):
         print('{:30} {}'.format(p, s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
