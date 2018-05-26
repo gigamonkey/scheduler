@@ -10,7 +10,6 @@ from httplib2 import Http
 from oauth2client import file, client, tools
 
 import arrow
-import json
 
 # Setup the Calendar API
 SCOPES = 'https://www.googleapis.com/auth/calendar.readonly'
@@ -48,31 +47,38 @@ class Interval():
         return Interval(arrow.get(cal['start']), arrow.get(cal['end']))
 
 
-def freebusy(emails, start_day, start_time, end_time, days):
-    "Freebusy results from Calendar API."
+def busy(emails, start_day, start_time, end_time, days):
+    "Map of intervals each person is busy according to their calendar."
 
-    return service.freebusy().query(body={
+    data = service.freebusy().query(body = {
         'timeMin': datetime.combine(start_day, start_time).isoformat(),
         'timeMax': datetime.combine(start_day + timedelta(days=days), end_time).isoformat(),
         'items': [ { 'id': e } for e in emails ],
         'timeZone': '-07:00'
     }).execute()
 
+    return { name : to_intervals(x['busy']) for name, x in data['calendars'].items() }
+
+
+def to_intervals(busy):
+    return [ Interval.from_calendar(x) for x in busy ]
 
 
 def free_slots(slots, busy):
     "Pick intervals in slots that do not overlap any of the busy intervals."
-    slots = slots[:]
-    busy = busy[:]
-    while slots and busy:
-        s = slots[0]
-        b = busy[0]
-        if s.before(b):
-            yield slots.pop(0)
-        elif s.after(b):
-            busy.pop(0)
-        else:
-            slots.pop(0)
+
+    def walk(slots, busy):
+        while slots and busy:
+            s = slots[0]
+            b = busy[0]
+            if s.before(b):
+                yield slots.pop(0)
+            elif s.after(b):
+                busy.pop(0)
+            else:
+                slots.pop(0)
+
+    return list(walk(slots[:], busy[:]))
 
 
 def slots(start_day, start_time, end_time, days=1, daysofweek={0,1,2,3,4}):
@@ -94,9 +100,6 @@ extending for `days` days. Doesn't know about holidays."""
     return ss
 
 
-def remove_busy(slots, busy):
-    return list(free_slots(slots, [ Interval.from_calendar(x) for x in busy ]))
-
 
 #
 # Search for schedules.
@@ -107,7 +110,7 @@ def search(people, slots, i):
     if people is None:
         return None
 
-    elif solved(people):
+    elif everyone_scheduled(people):
         yield to_schedule(people)
 
     else:
@@ -117,7 +120,8 @@ def search(people, slots, i):
                 new_people = assign(copy_people(people), p, slot)
                 yield from search(new_people, slots, i + 1)
 
-def solved(people):
+
+def everyone_scheduled(people):
     return all(len(slots) == 1 for slots in people.values())
 
 
@@ -131,8 +135,7 @@ def copy_people(people):
 
 def assign(people, p, s):
     "Assign slot s to person p, propagating consequences."
-    slots = people[p] - { s }
-    return people if all(eliminate(people, p, s1) for s1 in slots) else None
+    return people if all(eliminate(people, p, s1) for s1 in people[p] - { s }) else None
 
 
 def eliminate(people, p, s):
@@ -152,16 +155,13 @@ def eliminate(people, p, s):
 
 
 def schedules(people, slots):
+    "Generator of all possible schedules."
     return search(people, slots, 0)
 
 
 def schedule(people, slots):
+    "The first schedule found."
     return next(schedules(people, slots))
-
-
-def display_schedule(schedule):
-    for p, s in schedule:
-        print('{:30} {}'.format(p, s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
 
 
 if __name__ == '__main__':
@@ -179,10 +179,11 @@ if __name__ == '__main__':
     emails = [ line[:-1] for line in fileinput.input() ]
 
     principal = emails[0]
-    calendars = freebusy(emails, start_day, start_time, end_time, days)['calendars']
+    busy_times = busy(emails, start_day, start_time, end_time, days)
 
-    possible_slots = remove_busy(all_slots, calendars[principal]['busy'])
+    possible_slots = free_slots(all_slots, busy_times[principal])
 
-    people = { p: set(remove_busy(possible_slots, calendars[p]['busy'])) for p in calendars if p != principal }
+    people = { p: set(free_slots(possible_slots, busy_times[p])) for p in busy_times if p != principal }
 
-    display_schedule(schedule(people, possible_slots))
+    for p, s in schedule(people, possible_slots):
+        print('{:30} {}'.format(p, s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
