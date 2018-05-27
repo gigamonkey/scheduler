@@ -167,6 +167,13 @@ def schedule(meetings):
     return next(schedules(meetings))
 
 
+def possible_slots(slots, busy, attendees):
+    "Possible slots for a meeting involving given attendees."
+    for a in attendees:
+        slots = free_slots(slots, busy[a])
+    return set(slots)
+
+
 if __name__ == '__main__':
 
     import sys
@@ -181,16 +188,27 @@ if __name__ == '__main__':
     emails = [ line[:-1] for line in fileinput.input() ]
 
     principal      = emails[0]
+    others         = emails[1:]
     busy_times     = busy(emails, start_day, start_time, end_time, days)
     all_slots      = slots(start_day, start_time, end_time, days)
-    possible_slots = free_slots(all_slots, busy_times[principal])
 
-    meetings = { m : set(free_slots(possible_slots, busy_times[m])) for m in busy_times if m != principal }
+    def just_email(x): return x[:x.index('@')]
+
+    one_on_ones = {
+        id : {
+            'summary': '{} / {}'.format(just_email(attendees[1]), just_email(attendees[0])),
+            'attendees': attendees
+        }
+
+        for id, attendees in enumerate(([principal, other] for other in others))
+    }
+
+    meetings = { id : possible_slots(all_slots, busy_times, m['attendees']) for id, m in one_on_one.items() }
 
     for m, slots in meetings.items():
         if not slots:
-            print('{} has no free slots!'.format(m))
+            print('{} has no free slots!'.format(one_on_ones[m]['summary']))
             exit()
 
-    for m, s in schedule(meetings):
-        print('{:30} {}'.format(m, s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
+    for id, s in schedule(meetings):
+        print('{:30} {}'.format(one_on_ones[id]['summary'], s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
