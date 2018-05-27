@@ -9,6 +9,8 @@ from httplib2 import Http
 
 import arrow
 
+debug = False
+
 class Interval():
 
     "Represent a time interval as start (inclusive) and end (exlcusive)."
@@ -98,6 +100,15 @@ extending for `days` days. Doesn't know about holidays."""
 def schedules(meetings):
     "Generator of all possible schedules."
 
+    if debug:
+        print('Searching')
+        for m in sorted(meetings, key = lambda m: len(meetings[m])):
+            if len(meetings[m]) == 1:
+                print('{}, scheduled!'.format(m))
+            else:
+                print('{}, {} slots left'.format(m, len(meetings[m])))
+        print('')
+
     if meetings is None:
         return None
 
@@ -116,8 +127,12 @@ def all_scheduled(meetings):
     return all(len(slots) == 1 for slots in meetings.values())
 
 
+def item(s):
+    return next(iter(s))
+
+
 def to_schedule(meetings):
-    return sorted(((m, next(iter(slots))) for m, slots in meetings.items()), key=lambda x: x[1].start)
+    return sorted(((m, item(slots)) for m, slots in meetings.items()), key=lambda x: x[1].start)
 
 
 def copy_meetings(meetings):
@@ -126,18 +141,20 @@ def copy_meetings(meetings):
 
 def assign(meetings, m, s):
     "Assign slot s to meeting m, propagating consequences."
+    if debug: print('Assinging {} to {}'.format(s, m))
     return meetings if all(eliminate(meetings, m, s1) for s1 in meetings[m] - { s }) else None
 
 
 def eliminate(meetings, m, s):
     "Eliminate the slot s from meeting m and propagate consequences."
     if s in meetings[m]:
+        if debug: print('Eliminating {} from {}'.format(s, m))
         meetings[m].remove(s)
 
         if len(meetings[m]) == 0:
             return None
         elif len(meetings[m]) == 1:
-            s2 = list(meetings[m])[0]
+            s2 = item(meetings[m])
             other_meetings = [ m2 for m2 in meetings if m2 != m ]
             if not all(eliminate(meetings, m2, s2) for m2 in other_meetings):
                 return None
