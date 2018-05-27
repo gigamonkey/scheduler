@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-"""
-Schedule 1:1s with a bunch of people.
-"""
+"Schedule a bunch of desired meetings."
 
 from apiclient.discovery import build
 from credentials import creds
@@ -93,64 +91,63 @@ extending for `days` days. Doesn't know about holidays."""
     return ss
 
 
-
 #
 # Search for schedules.
 #
 
-def schedules(people):
+def schedules(meetings):
     "Generator of all possible schedules."
 
-    if people is None:
+    if meetings is None:
         return None
 
-    elif everyone_scheduled(people):
-        yield to_schedule(people)
+    elif all_scheduled(meetings):
+        yield to_schedule(meetings)
 
     else:
-        unscheduled = [ p for p in people if len(people[p]) > 1 ]
-        for p in sorted(unscheduled, key=lambda p: len(people[p])):
-            for s in sorted(people[p], key=lambda s: s.start):
-                new_people = assign(copy_people(people), p, s)
-                yield from schedules(new_people)
+        unscheduled = [ m for m in meetings if len(meetings[m]) > 1 ]
+        for m in sorted(unscheduled, key=lambda m: len(meetings[m])):
+            for s in sorted(meetings[m], key=lambda s: s.start):
+                new_meetings = assign(copy_meetings(meetings), m, s)
+                yield from schedules(new_meetings)
 
 
-def everyone_scheduled(people):
-    return all(len(slots) == 1 for slots in people.values())
+def all_scheduled(meetings):
+    return all(len(slots) == 1 for slots in meetings.values())
 
 
-def to_schedule(people):
-    return sorted(((p, next(iter(slots))) for p, slots in people.items()), key=lambda x: x[1].start)
+def to_schedule(meetings):
+    return sorted(((m, next(iter(slots))) for m, slots in meetings.items()), key=lambda x: x[1].start)
 
 
-def copy_people(people):
-    return { p : set(s) for p, s in people.items() }
+def copy_meetings(meetings):
+    return { m : set(s) for m, s in meetings.items() }
 
 
-def assign(people, p, s):
-    "Assign slot s to person p, propagating consequences."
-    return people if all(eliminate(people, p, s1) for s1 in people[p] - { s }) else None
+def assign(meetings, m, s):
+    "Assign slot s to meeting m, propagating consequences."
+    return meetings if all(eliminate(meetings, m, s1) for s1 in meetings[m] - { s }) else None
 
 
-def eliminate(people, p, s):
-    "Eliminate the slot s from person p and propagate consequences."
-    if s in people[p]:
-        people[p].remove(s)
+def eliminate(meetings, m, s):
+    "Eliminate the slot s from meeting m and propagate consequences."
+    if s in meetings[m]:
+        meetings[m].remove(s)
 
-        if len(people[p]) == 0:
+        if len(meetings[m]) == 0:
             return None
-        elif len(people[p]) == 1:
-            s2 = list(people[p])[0]
-            other_people = [ p2 for p2 in people if p2 != p ]
-            if not all(eliminate(people, p2, s2) for p2 in other_people):
+        elif len(meetings[m]) == 1:
+            s2 = list(meetings[m])[0]
+            other_meetings = [ m2 for m2 in meetings if m2 != m ]
+            if not all(eliminate(meetings, m2, s2) for m2 in other_meetings):
                 return None
 
-    return people
+    return meetings
 
 
-def schedule(people):
+def schedule(meetings):
     "The first schedule found."
-    return next(schedules(people))
+    return next(schedules(meetings))
 
 
 if __name__ == '__main__':
@@ -171,12 +168,12 @@ if __name__ == '__main__':
     all_slots      = slots(start_day, start_time, end_time, days)
     possible_slots = free_slots(all_slots, busy_times[principal])
 
-    people = { p: set(free_slots(possible_slots, busy_times[p])) for p in busy_times if p != principal }
+    meetings = { m : set(free_slots(possible_slots, busy_times[m])) for m in busy_times if m != principal }
 
-    for p, slots in people.items():
+    for m, slots in meetings.items():
         if not slots:
-            print('{} has no free slots!'.format(p))
+            print('{} has no free slots!'.format(m))
             exit()
 
-    for p, s in schedule(people):
-        print('{:30} {}'.format(p, s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
+    for m, s in schedule(meetings):
+        print('{:30} {}'.format(m, s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
