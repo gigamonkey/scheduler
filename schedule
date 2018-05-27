@@ -57,7 +57,7 @@ def to_intervals(busy):
     return [ Interval.from_calendar(x) for x in busy ]
 
 
-def free_slots(slots, busy):
+def busy_slots(slots, busy):
     "Pick intervals in slots that do not overlap any of the busy intervals."
 
     def walk(slots, busy):
@@ -65,11 +65,11 @@ def free_slots(slots, busy):
             s = slots[0]
             b = busy[0]
             if s.before(b):
-                yield slots.pop(0)
+                slots.pop(0)
             elif s.after(b):
                 busy.pop(0)
             else:
-                slots.pop(0)
+                yield slots.pop(0)
 
     return list(walk(slots[:], busy[:]))
 
@@ -167,12 +167,12 @@ def schedule(meetings):
     return next(schedules(meetings))
 
 
-def possible_slots(slots, busy, attendees):
-    "Possible slots for a meeting involving given attendees."
+def set_slots(m, attendees, busy, meetings):
     for a in attendees:
-        slots = free_slots(slots, busy[a])
-    return set(slots)
-
+        to_eliminate = busy_slots(sorted(meetings[m], key = lambda x: x.start), busy[a])
+        if not all(eliminate(meetings, m, s) for s in to_eliminate):
+            return None
+    return meetings
 
 if __name__ == '__main__':
 
@@ -203,12 +203,15 @@ if __name__ == '__main__':
         for id, attendees in enumerate(([principal, other] for other in others))
     }
 
-    meetings = { id : possible_slots(all_slots, busy_times, m['attendees']) for id, m in one_on_one.items() }
+    meetings = { id : set(all_slots) for id in one_on_ones }
 
-    for m, slots in meetings.items():
-        if not slots:
-            print('{} has no free slots!'.format(one_on_ones[m]['summary']))
-            exit()
+    for id, m in one_on_ones.items():
+        meetings = set_slots(id, m['attendees'], busy_times, meetings)
 
-    for id, s in schedule(meetings):
-        print('{:30} {}'.format(one_on_ones[id]['summary'], s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
+    sched = schedule(meetings)
+
+    if sched is None:
+        print('No way to schedule all meetings. Maybe time to become a goat farmer.')
+    else:
+        for id, s in sched:
+            print('{:30} {}'.format(one_on_ones[id]['summary'], s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
