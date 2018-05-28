@@ -51,28 +51,10 @@ def busy(emails, start_day, start_time, end_time, days):
         'timeZone': '-07:00'
     }).execute()
 
-    return { name : to_intervals(x['busy']) for name, x in data['calendars'].items() }
-
-
-def to_intervals(busy):
-    return [ Interval.from_calendar(x) for x in busy ]
-
-
-def busy_slots(slots, busy):
-    "Pick intervals in slots that overlap busy intervals."
-
-    def walk(slots, busy):
-        while slots and busy:
-            s = slots[0]
-            b = busy[0]
-            if s.before(b):
-                slots.pop(0)
-            elif s.after(b):
-                busy.pop(0)
-            else:
-                yield slots.pop(0)
-
-    return list(walk(slots[:], busy[:]))
+    return {
+        name : [ Interval.from_calendar(x) for x in x['busy'] ]
+        for name, x in data['calendars'].items()
+    }
 
 
 def slots(start_day, start_time, end_time, days=1, daysofweek={0,1,2,3,4}):
@@ -116,16 +98,11 @@ def schedules(meetings):
         unscheduled = [ m for m in meetings if len(meetings[m]) > 1 ]
         for m in sorted(unscheduled, key=lambda m: len(meetings[m])):
             for s in sorted(meetings[m], key=lambda s: s.start):
-                new_meetings = assign(copy_meetings(meetings), m, s)
-                yield from schedules(new_meetings)
+                yield from schedules(assign(copy_meetings(meetings), m, s))
 
 
 def all_scheduled(meetings):
     return all(len(slots) == 1 for slots in meetings.values())
-
-
-def item(s):
-    return next(iter(s))
 
 
 def to_schedule(meetings):
@@ -159,12 +136,8 @@ def eliminate(meetings, m, s):
     return meetings
 
 
-def set_slots(m, attendees, busy, meetings):
-    for a in attendees:
-        to_eliminate = busy_slots(sorted(meetings[m], key = lambda x: x.start), busy[a])
-        if not all(eliminate(meetings, m, s) for s in to_eliminate):
-            return None
-    return meetings
+def item(s):
+    return next(iter(s))
 
 
 def schedule(meetings, all_slots, busy_times):
@@ -173,6 +146,31 @@ def schedule(meetings, all_slots, busy_times):
     for id, m in meetings.items():
         s = set_slots(id, m['attendees'], busy_times, s)
     return next(schedules(s))
+
+
+def set_slots(m, attendees, busy, meetings):
+    for a in attendees:
+        to_eliminate = busy_slots(sorted(meetings[m], key = lambda x: x.start), busy[a])
+        if not all(eliminate(meetings, m, s) for s in to_eliminate):
+            return None
+    return meetings
+
+
+def busy_slots(slots, busy):
+    "Find intervals in slots that overlap busy intervals."
+
+    def walk(slots, busy):
+        while slots and busy:
+            s = slots[0]
+            b = busy[0]
+            if s.before(b):
+                slots.pop(0)
+            elif s.after(b):
+                busy.pop(0)
+            else:
+                yield slots.pop(0)
+
+    return list(walk(slots[:], busy[:]))
 
 
 if __name__ == '__main__':
