@@ -60,7 +60,7 @@ def busy(emails, start_day, start_time, end_time, days):
     }
 
 
-def slots(start_day, start_time, end_time, days=1, daysofweek={0,1,2,3,4}):
+def slots(start_day, start_time, end_time, days=1, minutes=30, daysofweek={0,1,2,3,4}):
     """Get all slots during working hours starting on `start_day` and
 extending for `days` days. Doesn't know about holidays."""
     ss = []
@@ -69,7 +69,7 @@ extending for `days` days. Doesn't know about holidays."""
         if day.weekday() in daysofweek:
             start  = datetime.combine(day, start_time)
             end    = datetime.combine(day, end_time)
-            length = timedelta(minutes=30)
+            length = timedelta(minutes=minutes)
 
             s = start
             while s < end:
@@ -147,9 +147,11 @@ def item(s):
     return next(iter(s))
 
 
-def schedule(meetings, all_slots, busy_times):
+def schedule(meetings, start_day, start_time, end_time, days):
     "Find the first possible schedule for the set of meetings."
-    s = { id : set(all_slots) for id in meetings }
+    emails     = set(a for m in meetings.values() for a in m['attendees'])
+    busy_times = busy(emails, start_day, start_time, end_time, days)
+    s = { id : set(slots(start_day, start_time, end_time, days, m['minutes'])) for id, m in meetings.items() }
     for id, m in meetings.items():
         s = set_slots(id, m['attendees'], busy_times, s)
     return next(schedules(s))
@@ -189,7 +191,7 @@ if __name__ == '__main__':
     start_day  = datetime.today()
     start_time = time(9, 0, tzinfo=pacific)
     end_time   = time(14, 0, tzinfo=pacific)
-    days       = 30
+    days       = 60
 
     pat = compile(r'^(.*?): *(.*)$')
 
@@ -198,12 +200,9 @@ if __name__ == '__main__':
         return (m.group(1), split(r', *', m.group(2)))
 
     specs      = [ to_meeting(line[:-1]) for line in fileinput.input() ]
-    meetings   = { id: { 'summary': s, 'attendees': a } for id, (s, a) in enumerate(specs) }
-    emails     = set(a for x in meetings.values() for a in x['attendees'])
-    busy_times = busy(emails, start_day, start_time, end_time, days)
-    all_slots  = slots(start_day, start_time, end_time, days)
+    meetings   = { id: { 'summary': s, 'attendees': a, 'minutes': 60 if s == 'All Hands' else 30 } for id, (s, a) in enumerate(specs) }
 
-    sched = schedule(meetings, all_slots, busy_times)
+    sched = schedule(meetings, start_day, start_time, end_time, days)
 
     if sched is None:
         print('No way to schedule all meetings. Maybe time to become a goat farmer.')
