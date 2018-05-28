@@ -53,11 +53,14 @@ def busy(emails, start_day, start_time, end_time, days):
         'timeZone': '-07:00'
     }).execute()
 
-    return {
+    busy_times = {
         name : [ Interval.from_calendar(x) for x in x['busy'] ]
         for name, x in data['calendars'].items()
     }
 
+    groups = { g : x['calendars'] for g, x in data['groups'].items() } if 'groups' in data else {}
+
+    return busy_times, groups
 
 def slots(start_day, start_time, end_time, days=1, minutes=30, increment=15, daysofweek={0,1,2,3,4}):
     "Get all slots during working hours in a given time range."
@@ -148,12 +151,26 @@ def item(s):
 
 def schedule(meetings, start_day, start_time, end_time, days):
     "Find the first possible schedule for the set of meetings."
-    emails     = set(a for m in meetings.values() for a in m['attendees'])
-    busy_times = busy(emails, start_day, start_time, end_time, days)
+    emails = set(a for m in meetings.values() for a in m['attendees'])
+    busy_times, groups = busy(emails, start_day, start_time, end_time, days)
+
     s = { id : set(slots(start_day, start_time, end_time, days, m['minutes'])) for id, m in meetings.items() }
+
     for id, m in meetings.items():
-        s = set_slots(id, m['attendees'], busy_times, s)
+        s = set_slots(id, expand(m['attendees'], groups), busy_times, s)
     return next(schedules(s))
+
+
+def expand(attendees, groups):
+    expansion = set()
+
+    for a in attendees:
+        if a in groups:
+            expansion |= set(groups[a])
+        else:
+            expansion.add(a)
+
+    return expansion
 
 
 def set_slots(m, attendees, busy, meetings):
