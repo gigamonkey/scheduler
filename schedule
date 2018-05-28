@@ -60,9 +60,8 @@ def busy(emails, start_day, start_time, end_time, days):
     }
 
 
-def slots(start_day, start_time, end_time, days=1, minutes=30, daysofweek={0,1,2,3,4}):
-    """Get all slots during working hours starting on `start_day` and
-extending for `days` days. Doesn't know about holidays."""
+def slots(start_day, start_time, end_time, days=1, minutes=30, increment=15, daysofweek={0,1,2,3,4}):
+    "Get all slots during working hours in a given time range."
     ss = []
     for d in range(days):
         day = start_day + timedelta(days=d)
@@ -70,12 +69,13 @@ extending for `days` days. Doesn't know about holidays."""
             start  = datetime.combine(day, start_time)
             end    = datetime.combine(day, end_time)
             length = timedelta(minutes=minutes)
+            incr   = timedelta(minutes=increment)
 
             s = start
             while s < end:
                 e = s + length
                 ss.append(Interval(s, e))
-                s = e
+                s += incr
     return ss
 
 
@@ -200,7 +200,7 @@ if __name__ == '__main__':
         return (m.group(1), split(r', *', m.group(2)))
 
     specs      = [ to_meeting(line[:-1]) for line in fileinput.input() ]
-    meetings   = { id: { 'summary': s, 'attendees': a, 'minutes': 60 if s == 'All Hands' else 30 } for id, (s, a) in enumerate(specs) }
+    meetings   = { id: { 'summary': s, 'attendees': a, 'minutes': 60 if len(a) > 2 else 30 } for id, (s, a) in enumerate(specs) }
 
     sched = schedule(meetings, start_day, start_time, end_time, days)
 
