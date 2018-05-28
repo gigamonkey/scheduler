@@ -116,21 +116,21 @@ def copy_meetings(meetings):
 def assign(meetings, m, s):
     "Assign slot s to meeting m, propagating consequences."
     if debug: print('Assinging {} to {}'.format(s, m))
-    return meetings if all(eliminate(meetings, m, s1) for s1 in meetings[m] - { s }) else None
+    return meetings if all(eliminate(meetings, m, lambda s: s == s1 ) for s1 in meetings[m] - { s }) else None
 
 
-def eliminate(meetings, m, s):
+def eliminate(meetings, m, fn):
     "Eliminate the slot s from meeting m and propagate consequences."
-    if s in meetings[m]:
+    if any(fn(s) for s in meetings[m]):
         if debug: print('Eliminating {} from {}'.format(s, m))
-        meetings[m].remove(s)
+        meetings[m] = { s for s in meetings[m] if not fn(s) }
 
         if len(meetings[m]) == 0:
             return None
         elif len(meetings[m]) == 1:
             s2 = item(meetings[m])
             other_meetings = [ m2 for m2 in meetings if m2 != m ]
-            if not all(eliminate(meetings, m2, s2) for m2 in other_meetings):
+            if not all(eliminate(meetings, m2, lambda s: s == s2) for m2 in other_meetings):
                 return None
 
     return meetings
@@ -151,7 +151,7 @@ def schedule(meetings, all_slots, busy_times):
 def set_slots(m, attendees, busy, meetings):
     for a in attendees:
         to_eliminate = busy_slots(sorted(meetings[m], key = lambda x: x.start), busy[a])
-        if not all(eliminate(meetings, m, s) for s in to_eliminate):
+        if not all(eliminate(meetings, m, lambda x: x == s) for s in to_eliminate):
             return None
     return meetings
 
