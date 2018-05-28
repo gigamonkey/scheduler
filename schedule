@@ -6,6 +6,7 @@ from apiclient.discovery import build
 from credentials import creds
 from datetime import datetime, time, timedelta, timezone
 from httplib2 import Http
+from re import compile, split
 
 import arrow
 
@@ -174,6 +175,14 @@ def set_slots(m, attendees, busy, meetings):
             return None
     return meetings
 
+
+def make_schedule(meetings, all_slots, busy_times):
+    s = { id : set(all_slots) for id in meetings }
+    for id, m in meetings.items():
+        s = set_slots(id, m['attendees'], busy_times, s)
+    return schedule(s)
+
+
 if __name__ == '__main__':
 
     import sys
@@ -185,33 +194,22 @@ if __name__ == '__main__':
     end_time   = time(14, 0, tzinfo=pacific)
     days       = 30
 
-    emails = [ line[:-1] for line in fileinput.input() ]
+    pat = compile(r'^(.*?): *(.*)$')
 
-    principal      = emails[0]
-    others         = emails[1:]
-    busy_times     = busy(emails, start_day, start_time, end_time, days)
-    all_slots      = slots(start_day, start_time, end_time, days)
+    def to_meeting(line):
+        m = pat.match(line)
+        return (m.group(1), split(r', *', m.group(2)))
 
-    def just_email(x): return x[:x.index('@')]
+    specs      = [ to_meeting(line[:-1]) for line in fileinput.input() ]
+    meetings   = { id: { 'summary': s, 'attendees': a } for id, (s, a) in enumerate(specs) }
+    emails     = set(a for x in meetings.values() for a in x['attendees'])
+    busy_times = busy(emails, start_day, start_time, end_time, days)
+    all_slots  = slots(start_day, start_time, end_time, days)
 
-    one_on_ones = {
-        id : {
-            'summary': '{} / {}'.format(just_email(attendees[1]), just_email(attendees[0])),
-            'attendees': attendees
-        }
-
-        for id, attendees in enumerate(([principal, other] for other in others))
-    }
-
-    meetings = { id : set(all_slots) for id in one_on_ones }
-
-    for id, m in one_on_ones.items():
-        meetings = set_slots(id, m['attendees'], busy_times, meetings)
-
-    sched = schedule(meetings)
+    sched = make_schedule(meetings, all_slots, busy_times)
 
     if sched is None:
         print('No way to schedule all meetings. Maybe time to become a goat farmer.')
     else:
         for id, s in sched:
-            print('{:30} {}'.format(one_on_ones[id]['summary'], s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
+            print('{:30} {}'.format(meetings[id]['summary'], s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
