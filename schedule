@@ -94,10 +94,6 @@ extending for `days` days. Doesn't know about holidays."""
     return ss
 
 
-#
-# Search for schedules.
-#
-
 def schedules(meetings):
     "Generator of all possible schedules."
 
@@ -163,11 +159,6 @@ def eliminate(meetings, m, s):
     return meetings
 
 
-def schedule(meetings):
-    "The first schedule found."
-    return next(schedules(meetings))
-
-
 def set_slots(m, attendees, busy, meetings):
     for a in attendees:
         to_eliminate = busy_slots(sorted(meetings[m], key = lambda x: x.start), busy[a])
@@ -176,11 +167,12 @@ def set_slots(m, attendees, busy, meetings):
     return meetings
 
 
-def make_schedule(meetings, all_slots, busy_times):
+def schedule(meetings, all_slots, busy_times):
+    "Find the first possible schedule for the set of meetings."
     s = { id : set(all_slots) for id in meetings }
     for id, m in meetings.items():
         s = set_slots(id, m['attendees'], busy_times, s)
-    return schedule(s)
+    return next(schedules(s))
 
 
 if __name__ == '__main__':
@@ -206,7 +198,7 @@ if __name__ == '__main__':
     busy_times = busy(emails, start_day, start_time, end_time, days)
     all_slots  = slots(start_day, start_time, end_time, days)
 
-    sched = make_schedule(meetings, all_slots, busy_times)
+    sched = schedule(meetings, all_slots, busy_times)
 
     if sched is None:
         print('No way to schedule all meetings. Maybe time to become a goat farmer.')
