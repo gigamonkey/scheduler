@@ -59,6 +59,9 @@ class Meeting():
             'slots': [ '{}'.format(s) for s in self.slots ]
         })
 
+    def scheduled(self):
+        return len(self.slots) == 1
+
     def copy(self):
         return Meeting(self.summary, self.minutes, self.invitees, self.attendees, set(self.slots))
 
@@ -109,22 +112,14 @@ def schedules(meetings):
     if meetings is None:
         return None
 
-    elif all_scheduled(meetings):
-        yield to_schedule(meetings)
+    elif all(m.scheduled() for m in meetings.values()):
+        yield meetings
 
     else:
         unscheduled = [ m for m in meetings if len(meetings[m].slots) > 1 ]
         for m in sorted(unscheduled, key=lambda m: len(meetings[m].slots)):
             for s in sorted(meetings[m].slots, key=lambda s: s.start):
                 yield from schedules(assign(copy_meetings(meetings), m, s))
-
-
-def all_scheduled(meetings):
-    return all(len(meeting.slots) == 1 for meeting in meetings.values())
-
-
-def to_schedule(meetings):
-    return sorted(((m, item(meeting.slots)) for m, meeting in meetings.items()), key=lambda x: x[1].start)
 
 
 def copy_meetings(meetings):
@@ -175,7 +170,7 @@ def schedule(meetings, start_day, start_time, end_time, days):
         if not(initialize_slots(meetings, m, slots, busy_times, groups)):
             return None
 
-    return next(schedules(meetings))
+    return next(schedules(meetings), None)
 
 
 def initialize_slots(meetings, m, starting_slots, busy, groups):
@@ -245,8 +240,9 @@ if __name__ == '__main__':
     if sched is None:
         print('No way to schedule all meetings. Maybe time to become a goat farmer.')
     else:
-        for id, s in sched:
+        for m in sorted(sched.values(), key = lambda m: item(m.slots).start):
+            s = item(m.slots)
             print('{:30} {} to {}'.format(
-                meetings[id].summary,
+                m.summary,
                 s.start.strftime('%a, %b %d %I:%M %p'),
                 s.end.strftime('%I:%M %p (%Z)')))
