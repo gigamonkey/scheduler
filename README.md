@@ -27,9 +27,13 @@ cat meetings.txt | ./schedule
 where `meetings.txt` is a file containing one meeting per line in the format:
 
 ```
-A meeting name: harry@example.com, sally@example.com
-Another meeting name: sally@example.com, linda@example.com, bobby@example.com
+[30] A meeting name: harry@example.com, sally@example.com
+[60] Another meeting name: sally@example.com, linda@example.com, bobby@example.com
 ```
 
-The program will find a schedule for all the meetings taking into account
-everyone's current calendar and the need to not schedule conflicting meetings.
+Where the number in brackets is the duration in minutes of the
+meeting, the text up to the colon is the title of the meeting, and
+everything after the colon is a comma-delimited list of attendees. The
+program will find a schedule for all the meetings taking into account
+everyone's current calendar and the need to not schedule conflicting
+meetings.

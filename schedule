@@ -6,7 +6,6 @@ from apiclient.discovery import build
 from credentials import creds
 from datetime import datetime, time, timedelta, timezone
 from httplib2 import Http
-from re import compile, split
 
 import arrow
 
@@ -184,8 +183,9 @@ def busy_slots(slots, busy):
 
 if __name__ == '__main__':
 
-    import sys
     import fileinput
+    import re
+    import sys
 
     pacific    = timezone(timedelta(hours=-7))
     start_day  = datetime.today()
@@ -193,14 +193,17 @@ if __name__ == '__main__':
     end_time   = time(14, 0, tzinfo=pacific)
     days       = 60
 
-    pat = compile(r'^(.*?): *(.*)$')
+    pat = re.compile(r'^\[(\d+)\] *(.*?): *(.*)$')
 
     def to_meeting(line):
         m = pat.match(line)
-        return (m.group(1), split(r', *', m.group(2)))
+        return {
+            'summary': m.group(2),
+            'attendees': re.split(r', *', m.group(3)),
+            'minutes': int(m.group(1))
+        }
 
-    specs      = [ to_meeting(line[:-1]) for line in fileinput.input() ]
-    meetings   = { id: { 'summary': s, 'attendees': a, 'minutes': 60 if len(a) > 2 else 30 } for id, (s, a) in enumerate(specs) }
+    meetings = { id: to_meeting(line[:-1]) for id, line in enumerate(fileinput.input()) }
 
     sched = schedule(meetings, start_day, start_time, end_time, days)
 
@@ -208,4 +211,7 @@ if __name__ == '__main__':
         print('No way to schedule all meetings. Maybe time to become a goat farmer.')
     else:
         for id, s in sched:
-            print('{:30} {}'.format(meetings[id]['summary'], s.start.strftime('%a, %B %d %I:%M %p (%Z)')))
+            print('{:30} {} to {}'.format(
+                meetings[id]['summary'],
+                s.start.strftime('%a, %b %d %I:%M %p'),
+                s.end.strftime('%I:%M %p (%Z)')))
