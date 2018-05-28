@@ -21,7 +21,7 @@ Then run:
 or
 
 ```
-cat calendars.txt | ./schedule
+cat meetings.txt | ./schedule
 ```
 
 where `meetings.txt` is a file containing one meeting per line in the format:
