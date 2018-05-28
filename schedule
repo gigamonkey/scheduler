@@ -35,6 +35,9 @@ class Interval():
     def after(self, other):
         return self.start >= other.end
 
+    def overlaps(self, other):
+        return not (self.before(other) or self.after(other))
+
     def from_calendar(cal):
         return Interval(arrow.get(cal['start']), arrow.get(cal['end']))
 
@@ -134,7 +137,7 @@ def eliminate(meetings, m, fn):
         elif len(meetings[m]) == 1:
             s2 = item(meetings[m])
             other_meetings = [ m2 for m2 in meetings if m2 != m ]
-            if not all(eliminate(meetings, m2, lambda x: x == s2) for m2 in other_meetings):
+            if not all(eliminate(meetings, m2, lambda x: x.overlaps(s2)) for m2 in other_meetings):
                 return None
 
     return meetings
