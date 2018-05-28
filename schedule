@@ -99,7 +99,7 @@ def working_slots(start_day, start_time, end_time, days=1, minutes=30, increment
             incr   = timedelta(minutes=increment)
 
             s = start
-            while s < end:
+            while (s + length) <= end:
                 e = s + length
                 ss.append(Interval(s, e))
                 s += incr
