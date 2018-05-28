@@ -59,7 +59,7 @@ def to_intervals(busy):
 
 
 def busy_slots(slots, busy):
-    "Pick intervals in slots that do not overlap any of the busy intervals."
+    "Pick intervals in slots that overlap busy intervals."
 
     def walk(slots, busy):
         while slots and busy:
