@@ -40,6 +40,28 @@ class Interval():
     def from_calendar(cal):
         return Interval(arrow.get(cal['start']), arrow.get(cal['end']))
 
+class Meeting():
+
+    def __init__(self, summary, minutes, invitees, attendees = None, slots = None):
+        self.summary   = summary
+        self.minutes   = minutes
+        self.invitees  = invitees
+        self.attendees = attendees
+        self.slots     = slots
+
+    def __repr__(self):
+        import json
+        return json.dumps({
+            'summary': self.summary,
+            'minutes': self.minutes,
+            'invitees': list(self.invitees),
+            'attendees': list(self.attendees),
+            'slots': [ '{}'.format(s) for s in self.slots ]
+        })
+
+    def copy(self):
+        return Meeting(self.summary, self.minutes, self.invitees, self.attendees, set(self.slots))
+
 
 def busy(emails, start_day, start_time, end_time, days):
     "Map of intervals each person is busy according to their calendar."
@@ -62,7 +84,7 @@ def busy(emails, start_day, start_time, end_time, days):
 
     return busy_times, groups
 
-def slots(start_day, start_time, end_time, days=1, minutes=30, increment=15, daysofweek={0,1,2,3,4}):
+def working_slots(start_day, start_time, end_time, days=1, minutes=30, increment=15, daysofweek={0,1,2,3,4}):
     "Get all slots during working hours in a given time range."
     ss = []
     for d in range(days):
@@ -81,74 +103,62 @@ def slots(start_day, start_time, end_time, days=1, minutes=30, increment=15, day
     return ss
 
 
-def schedules(slots, meetings):
+def schedules(meetings):
     "Generator of all possible schedules."
 
-    if debug:
-        print('Searching')
-        if slots !=  None:
-            for m in sorted(slots, key = lambda m: len(slots[m])):
-                if len(slots[m]) == 1:
-                    print('{}, scheduled!'.format(m))
-                else:
-                    print('{}, {} slots left'.format(m, len(slots[m])))
-            print('')
-        else:
-            print('slots is None')
-
-    if slots is None:
+    if meetings is None:
         return None
 
-    elif all_scheduled(slots):
-        yield to_schedule(slots)
+    elif all_scheduled(meetings):
+        yield to_schedule(meetings)
 
     else:
-        unscheduled = [ m for m in slots if len(slots[m]) > 1 ]
-        for m in sorted(unscheduled, key=lambda m: len(slots[m])):
-            for s in sorted(slots[m], key=lambda s: s.start):
-                yield from schedules(assign(copy_slots(slots), m, s, meetings), meetings)
+        unscheduled = [ m for m in meetings if len(meetings[m].slots) > 1 ]
+        for m in sorted(unscheduled, key=lambda m: len(meetings[m].slots)):
+            for s in sorted(meetings[m].slots, key=lambda s: s.start):
+                yield from schedules(assign(copy_meetings(meetings), m, s))
 
 
 def all_scheduled(meetings):
-    return all(len(slots) == 1 for slots in meetings.values())
+    return all(len(meeting.slots) == 1 for meeting in meetings.values())
 
 
 def to_schedule(meetings):
-    return sorted(((m, item(slots)) for m, slots in meetings.items()), key=lambda x: x[1].start)
+    return sorted(((m, item(meeting.slots)) for m, meeting in meetings.items()), key=lambda x: x[1].start)
 
 
-def copy_slots(slots):
-    return { m : set(s) for m, s in slots.items() }
+def copy_meetings(meetings):
+    return { m: meeting.copy() for m, meeting in meetings.items() }
 
 
-def assign(slots, m, s, meetings):
+def assign(meetings, m, s):
     "Assign slot s to meeting m, propagating consequences."
     if debug: print('Assinging {} to {}'.format(s, m))
-    return slots if eliminate(slots, m, lambda x: x != s, meetings) else None
+    return meetings if eliminate(meetings, m, lambda x: x != s) else None
 
 
-def eliminate(slots, m, fn, meetings):
+def eliminate(meetings, m, fn):
     "Eliminate slots from meeting m and propagate consequences."
-    to_eliminate = { s for s in slots[m] if fn(s) }
+    to_eliminate = { s for s in meetings[m].slots if fn(s) }
     if to_eliminate:
         if debug: print('Eliminating {} from {}'.format(to_eliminate, m))
-        slots[m] -= to_eliminate
-        left = len(slots[m])
+        meetings[m].slots -= to_eliminate
+        left = len(meetings[m].slots)
 
         if left == 0:
             return None
         elif left == 1:
-            s = item(slots[m])
+            s = item(meetings[m].slots)
             other_meetings = overlapping_attendees(m, meetings) - { m }
-            if not all(eliminate(slots, m2, lambda x: x.overlaps(s), meetings) for m2 in other_meetings):
+            if not all(eliminate(meetings, m2, lambda x: x.overlaps(s)) for m2 in other_meetings):
                 return None
 
-    return slots
+    return meetings
 
 
 def overlapping_attendees(m, meetings):
-    attendees = set(meetings[m]['attendees'])
-    return { m2 for m2 in meetings if attendees & set(meetings[m2]['attendees']) }
+    attendees = meetings[m].attendees
+    return { m2 for m2 in meetings if attendees & meetings[m2].attendees }
 
 
 def item(s):
@@ -157,14 +167,28 @@ def item(s):
 
 def schedule(meetings, start_day, start_time, end_time, days):
     "Find the first possible schedule for the set of meetings."
-    emails = set(a for m in meetings.values() for a in m['attendees'])
+    emails = set(a for m in meetings.values() for a in m.invitees)
     busy_times, groups = busy(emails, start_day, start_time, end_time, days)
 
-    s = { id : set(slots(start_day, start_time, end_time, days, m['minutes'])) for id, m in meetings.items() }
+    for m, meeting in meetings.items():
+        slots = set(working_slots(start_day, start_time, end_time, days, meeting.minutes))
+        if not(initialize_slots(meetings, m, slots, busy_times, groups)):
+            return None
 
-    for id, m in meetings.items():
-        s = set_slots(id, expand(m['attendees'], groups), busy_times, s, meetings)
-    return next(schedules(s, meetings))
+    return next(schedules(meetings))
+
+
+def initialize_slots(meetings, m, starting_slots, busy, groups):
+    meeting           = meetings[m]
+    meeting.attendees = expand(meeting.invitees, groups)
+    meeting.slots     = starting_slots
+
+    for a in meeting.attendees:
+        to_eliminate = busy_slots(sorted(meeting.slots, key = lambda x: x.start), busy[a])
+        if not eliminate(meetings, m, lambda x: x in to_eliminate):
+            return None
+
+    return meetings
 
 
 def expand(attendees, groups):
@@ -177,14 +201,6 @@ def expand(attendees, groups):
             expansion.add(a)
 
     return expansion
-
-
-def set_slots(m, attendees, busy, slots, meetings):
-    for a in attendees:
-        to_eliminate = busy_slots(sorted(slots[m], key = lambda x: x.start), busy[a])
-        if not eliminate(slots, m, lambda x: x in to_eliminate, meetings):
-            return None
-    return slots
 
 
 def busy_slots(slots, busy):
@@ -220,11 +236,7 @@ if __name__ == '__main__':
 
     def to_meeting(line):
         m = pat.match(line)
-        return {
-            'summary': m.group(2),
-            'attendees': re.split(r', *', m.group(3)),
-            'minutes': int(m.group(1))
-        }
+        return Meeting(m.group(2), int(m.group(1)), frozenset(re.split(r', *', m.group(3))))
 
     meetings = { id: to_meeting(line[:-1]) for id, line in enumerate(fileinput.input()) }
 
@@ -235,6 +247,6 @@ if __name__ == '__main__':
     else:
         for id, s in sched:
             print('{:30} {} to {}'.format(
-                meetings[id]['summary'],
+                meetings[id].summary,
                 s.start.strftime('%a, %b %d %I:%M %p'),
                 s.end.strftime('%I:%M %p (%Z)')))
