@@ -69,7 +69,6 @@ class Meeting():
 
 def busy(emails, start_day, start_time, end_time, days):
     "Map of intervals each person is busy according to their calendar."
-
     service = build('calendar', 'v3', http=creds.authorize(Http()))
 
     data = service.freebusy().query(body = {
@@ -89,7 +88,7 @@ def busy(emails, start_day, start_time, end_time, days):
     return busy_times, groups
 
 def schedule_meeting(meeting, calendar, location = None, description = None):
-
+    "Schedule a meeting on the given calendar with the given location and description."
     service = build('calendar', 'v3', http=creds.authorize(Http()))
 
     body = {
@@ -125,7 +124,6 @@ def working_slots(start_day, start_time, end_time, days=1, minutes=30, increment
 
 def schedules(meetings):
     "Generator of all possible schedules."
-
     if meetings is None:
         return None
 
@@ -173,30 +171,33 @@ def schedule(meetings, start_day, start_time, end_time, days):
     emails = set(a for m in meetings.values() for a in m.invitees)
     busy_times, groups = busy(emails, start_day, start_time, end_time, days)
 
+    # First fill in the basic slots for the desired length of meeting
+    # and expand the attendees list.
     for m, meeting in meetings.items():
-        slots = set(working_slots(start_day, start_time, end_time, days, meeting.minutes))
-        if not(initialize_slots(meetings, m, slots, busy_times, groups)):
+        meeting.slots = set(working_slots(start_day, start_time, end_time, days, meeting.minutes))
+        meeting.attendees = expand(meeting.invitees, groups)
+
+    # Now that every meeting is set up we can eliminate busy times and
+    # potentially take advantage of contstraint propagation.
+    for m, meeting in meetings.items():
+        if not(eliminate_busy(meetings, m, busy_times)):
             return None
 
     return next(schedules(meetings), None)
 
 
-def initialize_slots(meetings, m, starting_slots, busy, groups):
-    meeting           = meetings[m]
-    meeting.attendees = expand(meeting.invitees, groups)
-    meeting.slots     = starting_slots
-
+def eliminate_busy(meetings, m, busy):
+    "Eliminate the slots where one of the attendees is busy."
+    meeting = meetings[m]
     for a in meeting.attendees:
         to_eliminate = busy_slots(sorted(meeting.slots, key = lambda x: x.start), busy[a])
         if not eliminate(meetings, m, lambda x: x in to_eliminate):
             return None
-
     return meetings
 
 
 def expand(invitees, groups):
     "Expand the invitees (which may include groups) into actual people."
-
     expansion = set()
     for i in invitees:
         expansion |= set(groups[i]) if i in groups else { i }
@@ -205,7 +206,6 @@ def expand(invitees, groups):
 
 def busy_slots(slots, busy):
     "Find intervals in slots that overlap busy intervals."
-
     def walk(slots, busy):
         while slots and busy:
             s = slots[0]
@@ -221,6 +221,7 @@ def busy_slots(slots, busy):
 
 
 def print_schedule(meetings):
+    "Print a human readable schedule."
     for m in sorted(meetings.values(), key = lambda m: item(m.slots).start):
         s = item(m.slots)
         print('{:30} {} to {}'.format(
@@ -230,6 +231,7 @@ def print_schedule(meetings):
 
 
 def schedule_meetings(meetings, calendar, location):
+    "Actually schedule the meetings on the given calendar at the given location."
     for m in sorted(meetings.values(), key = lambda m: item(m.slots).start):
         r = schedule_meeting(m, calendar, location)
         print(json.dumps(r, indent=2))
