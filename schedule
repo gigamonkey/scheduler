@@ -10,7 +10,6 @@ from httplib2 import Http
 import arrow
 import json
 
-debug = False
 
 class Interval():
 
@@ -43,11 +42,13 @@ class Interval():
 
 class Meeting():
 
+    "Meeting to be scheduled. Attendees and slots are filled in by the scheduling process."
+
     def __init__(self, summary, minutes, invitees, attendees = None, slots = None):
         self.summary   = summary
         self.minutes   = minutes
-        self.invitees  = invitees
-        self.attendees = attendees
+        self.invitees  = invitees  # Who's on the invite, may includes groups
+        self.attendees = attendees # Actual people after expanding groups
         self.slots     = slots
 
     def __repr__(self):
@@ -87,14 +88,14 @@ def busy(emails, start_day, start_time, end_time, days):
 
     return busy_times, groups
 
-def schedule_meeting(meeting, calendar, location = None):
+def schedule_meeting(meeting, calendar, location = None, description = None):
 
     service = build('calendar', 'v3', http=creds.authorize(Http()))
 
     body = {
-        'summary': 'TESTING. IGNORE: ' + meeting.summary,
+        'summary': meeting.summary,
         'location': location or '',
-        'description': 'TESTING AUTO SCHEDULING. PLEASE IGNORE',
+        'description': description or '',
         'start': { 'dateTime': item(meeting.slots).start.isoformat() },
         'end': { 'dateTime': item(meeting.slots).end.isoformat() },
         'attendees': [ { 'email': e } for e in meeting.invitees if e != calendar ]
@@ -141,7 +142,6 @@ def schedules(meetings):
 
 def assign(meetings, m, s):
     "Assign slot s to meeting m, propagating consequences."
-    if debug: print('Assinging {} to {}'.format(s, m))
     return meetings if eliminate(meetings, m, lambda x: x != s) else None
 
 
@@ -149,7 +149,6 @@ def eliminate(meetings, m, fn):
     "Eliminate slots from meeting m and propagate consequences."
     to_eliminate = { s for s in meetings[m].slots if fn(s) }
     if to_eliminate:
-        if debug: print('Eliminating {} from {}'.format(to_eliminate, m))
         meetings[m].slots -= to_eliminate
         left = len(meetings[m].slots)
 
@@ -195,10 +194,12 @@ def initialize_slots(meetings, m, starting_slots, busy, groups):
     return meetings
 
 
-def expand(attendees, groups):
+def expand(invitees, groups):
+    "Expand the invitees (which may include groups) into actual people."
+
     expansion = set()
-    for a in attendees:
-        expansion |= set(groups[a]) if a in groups else { a }
+    for i in invitees:
+        expansion |= set(groups[i]) if i in groups else { i }
     return expansion
 
 
@@ -227,10 +228,12 @@ def print_schedule(meetings):
             s.start.strftime('%a, %b %d %I:%M %p'),
             s.end.strftime('%I:%M %p (%Z)')))
 
+
 def schedule_meetings(meetings, calendar, location):
     for m in sorted(meetings.values(), key = lambda m: item(m.slots).start):
         r = schedule_meeting(m, calendar, location)
         print(json.dumps(r, indent=2))
+
 
 if __name__ == '__main__':
 
