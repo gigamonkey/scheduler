@@ -1,6 +1,8 @@
 # scheduler
 
-Code for scheduling meetings on Google calendar.
+Code for scheduling multiple meetings on Google calendar, finding a
+schedule for all the meetings taking into account everyone's current
+calendar and the need to not schedule conflicting meetings.
 
 Once you've got a `client_secrets.json` from the Google API console you can run:
 
@@ -28,9 +30,7 @@ file containing one meeting per line in the format:
 
 The number in brackets is the duration in minutes of the meeting, the
 text up to the colon is the title of the meeting, and everything after
-the colon is a comma-delimited list of attendees. The program will
-find a schedule for all the meetings taking into account everyone's
-current calendar and the need to not schedule conflicting meetings.
+the colon is a comma-delimited list of attendees.
 
 Run:
 
