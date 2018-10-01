@@ -15,25 +15,27 @@ https://support.google.com/googleapi/answer/6158849.
 Then run:
 
 ```
-./schedule meetings.txt
+./schedule --dry-run meetings.txt
 ```
 
-or
-
-```
-cat meetings.txt | ./schedule
-```
-
-where `meetings.txt` is a file containing one meeting per line in the format:
+to see when it would schedule the meetings where `meetings.txt` is a
+file containing one meeting per line in the format:
 
 ```
 [30] A meeting name: harry@example.com, sally@example.com
 [60] Another meeting name: sally@example.com, linda@example.com, bobby@example.com
 ```
 
-Where the number in brackets is the duration in minutes of the
-meeting, the text up to the colon is the title of the meeting, and
-everything after the colon is a comma-delimited list of attendees. The
-program will find a schedule for all the meetings taking into account
-everyone's current calendar and the need to not schedule conflicting
-meetings.
+The number in brackets is the duration in minutes of the meeting, the
+text up to the colon is the title of the meeting, and everything after
+the colon is a comma-delimited list of attendees. The program will
+find a schedule for all the meetings taking into account everyone's
+current calendar and the need to not schedule conflicting meetings.
+
+Run:
+
+```
+./schedule meetings.txt
+```
+
+to actually schedule them on people's calendars.
