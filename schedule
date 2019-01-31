@@ -103,7 +103,7 @@ def schedule_meeting(meeting, calendar, location = None, description = None):
     return service.events().insert(calendarId = calendar, body = body).execute()
 
 
-def working_slots(start_day, start_time, end_time, days=1, minutes=30, increment=15, daysofweek={0,1,2,3,4}):
+def working_slots(start_day, start_time, end_time, now, days=1, minutes=30, increment=15, daysofweek={0,1,2,3,4}):
     "Get all slots during working hours in a given time range."
     ss = []
     for d in range(days):
@@ -117,7 +117,8 @@ def working_slots(start_day, start_time, end_time, days=1, minutes=30, increment
             s = start
             while (s + length) <= end:
                 e = s + length
-                ss.append(Interval(s, e))
+                if s > now:
+                    ss.append(Interval(s, e))
                 s += incr
     return ss
 
@@ -166,7 +167,7 @@ def item(s):
     return next(iter(s))
 
 
-def schedule(meetings, start_day, start_time, end_time, days):
+def schedule(meetings, start_day, start_time, end_time, days, now):
     "Find the first possible schedule for the set of meetings."
     emails = set(a for m in meetings.values() for a in m.invitees)
     busy_times, groups = busy(emails, start_day, start_time, end_time, days)
@@ -174,7 +175,7 @@ def schedule(meetings, start_day, start_time, end_time, days):
     # First fill in the basic slots for the desired length of meeting
     # and expand the attendees list.
     for m, meeting in meetings.items():
-        meeting.slots = set(working_slots(start_day, start_time, end_time, days, meeting.minutes))
+        meeting.slots = set(working_slots(start_day, start_time, end_time, now, days, meeting.minutes))
         meeting.attendees = expand(meeting.invitees, groups)
 
     # Now that every meeting is set up we can eliminate busy times and
@@ -230,10 +231,10 @@ def print_schedule(meetings):
             s.end.strftime('%I:%M %p (%Z)')))
 
 
-def schedule_meetings(meetings, calendar, location):
+def schedule_meetings(meetings, calendar, location = None, description = None):
     "Actually schedule the meetings on the given calendar at the given location."
     for m in sorted(meetings.values(), key = lambda m: item(m.slots).start):
-        r = schedule_meeting(m, calendar, location)
+        r = schedule_meeting(m, calendar, location, description)
         print(json.dumps(r, indent=2))
 
 
@@ -242,25 +243,42 @@ if __name__ == '__main__':
     import fileinput
     import re
     import sys
+    import argparse
 
-    pacific    = timezone(timedelta(hours=-7))
-    start_day  = datetime.today()
+
+    pacific    = timezone(timedelta(hours=-8))
+    start_day  = datetime.today() # + timedelta(days=15)
     start_time = time(9, 0, tzinfo=pacific)
     end_time   = time(14, 0, tzinfo=pacific)
     days       = 60
+    now        = datetime.now(tz=pacific)
 
     pat = re.compile(r'^\[(\d+)\] *(.*?): *(.*)$')
+
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("meetings",
+                   help="File containing meeting specs, one per line.",
+                   type=argparse.FileType())
+    p.add_argument("--dry-run",
+                   dest="dry_run",
+                   help="Just print a list of the times that would be scheduled.",
+                   action="store_true")
+
+    args = p.parse_args()
 
     def to_meeting(line):
         m = pat.match(line)
         return Meeting(m.group(2), int(m.group(1)), frozenset(re.split(r', *', m.group(3))))
 
-    meetings = { id: to_meeting(line[:-1]) for id, line in enumerate(fileinput.input()) }
+    meetings = { id: to_meeting(line[:-1]) for id, line in enumerate(args.meetings) }
 
-    meetings = schedule(meetings, start_day, start_time, end_time, days)
+    meetings = schedule(meetings, start_day, start_time, end_time, days, now)
+
 
     if meetings is None:
         print('No way to schedule all meetings. Maybe time to become a goat farmer.')
     else:
-        print_schedule(meetings)
-        #schedule_meetings(meetings, 'YOUR EMAIL', 'SOME LOCATION')
+        if args.dry_run:
+            print_schedule(meetings)
+        else:
+            schedule_meetings(meetings, 'seibelp@dnc.org', description='https://democrats.zoom.us/my/seibelp')
