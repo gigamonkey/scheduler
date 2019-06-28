@@ -2,16 +2,17 @@
 
 "Schedule a bunch of desired meetings."
 
-from apiclient.discovery import build
-from credentials import creds
+import json
 from datetime import datetime, time, timedelta, timezone
-from httplib2 import Http
 
 import arrow
-import json
+from apiclient.discovery import build
+from httplib2 import Http
+
+from credentials import creds
 
 
-class Interval():
+class Interval:
 
     "Represent a time interval as start (inclusive) and end (exlcusive)."
 
@@ -26,7 +27,7 @@ class Interval():
         return hash((self.start, self.end))
 
     def __repr__(self):
-        return '{} to {}'.format(self.start.isoformat(), self.end.isoformat())
+        return "{} to {}".format(self.start.isoformat(), self.end.isoformat())
 
     def before(self, other):
         return self.end <= other.start
@@ -38,81 +39,108 @@ class Interval():
         return not (self.before(other) or self.after(other))
 
     def from_calendar(cal):
-        return Interval(arrow.get(cal['start']), arrow.get(cal['end']))
+        return Interval(arrow.get(cal["start"]), arrow.get(cal["end"]))
 
-class Meeting():
+
+class Meeting:
 
     "Meeting to be scheduled. Attendees and slots are filled in by the scheduling process."
 
-    def __init__(self, summary, minutes, invitees, attendees = None, slots = None):
-        self.summary   = summary
-        self.minutes   = minutes
-        self.invitees  = invitees  # Who's on the invite, may includes groups
-        self.attendees = attendees # Actual people after expanding groups
-        self.slots     = slots
+    def __init__(self, summary, minutes, invitees, attendees=None, slots=None):
+        self.summary = summary
+        self.minutes = minutes
+        self.invitees = invitees  # Who's on the invite, may includes groups
+        self.attendees = attendees  # Actual people after expanding groups
+        self.slots = slots
 
     def __repr__(self):
-        return json.dumps({
-            'summary': self.summary,
-            'minutes': self.minutes,
-            'invitees': list(self.invitees),
-            'attendees': list(self.attendees),
-            'slots': [ '{}'.format(s) for s in self.slots ]
-        })
+        return json.dumps(
+            {
+                "summary": self.summary,
+                "minutes": self.minutes,
+                "invitees": list(self.invitees),
+                "attendees": list(self.attendees),
+                "slots": ["{}".format(s) for s in self.slots],
+            }
+        )
 
     def scheduled(self):
         return len(self.slots) == 1
 
     def copy(self):
-        return Meeting(self.summary, self.minutes, self.invitees, self.attendees, set(self.slots))
+        return Meeting(
+            self.summary, self.minutes, self.invitees, self.attendees, set(self.slots)
+        )
 
 
 def busy(emails, start_day, start_time, end_time, days):
     "Map of intervals each person is busy according to their calendar."
-    service = build('calendar', 'v3', http=creds.authorize(Http()))
+    service = build("calendar", "v3", http=creds.authorize(Http()))
 
-    data = service.freebusy().query(body = {
-        'timeMin': datetime.combine(start_day, start_time).isoformat(),
-        'timeMax': datetime.combine(start_day + timedelta(days=days), end_time).isoformat(),
-        'items': [ { 'id': e } for e in emails ],
-        'timeZone': '-07:00'
-    }).execute()
+    data = (
+        service.freebusy()
+        .query(
+            body={
+                "timeMin": datetime.combine(start_day, start_time).isoformat(),
+                "timeMax": datetime.combine(
+                    start_day + timedelta(days=days), end_time
+                ).isoformat(),
+                "items": [{"id": e} for e in emails],
+                "timeZone": "-07:00",
+            }
+        )
+        .execute()
+    )
 
     busy_times = {
-        name : [ Interval.from_calendar(x) for x in x['busy'] ]
-        for name, x in data['calendars'].items()
+        name: [Interval.from_calendar(x) for x in x["busy"]]
+        for name, x in data["calendars"].items()
     }
 
-    groups = { g : x['calendars'] for g, x in data['groups'].items() } if 'groups' in data else {}
+    groups = (
+        {g: x["calendars"] for g, x in data["groups"].items()}
+        if "groups" in data
+        else {}
+    )
 
     return busy_times, groups
 
-def schedule_meeting(meeting, calendar, location = None, description = None):
+
+def schedule_meeting(meeting, calendar, location=None, description=None):
     "Schedule a meeting on the given calendar with the given location and description."
-    service = build('calendar', 'v3', http=creds.authorize(Http()))
+    service = build("calendar", "v3", http=creds.authorize(Http()))
 
     body = {
-        'summary': meeting.summary,
-        'location': location or '',
-        'description': description or '',
-        'start': { 'dateTime': item(meeting.slots).start.isoformat() },
-        'end': { 'dateTime': item(meeting.slots).end.isoformat() },
-        'attendees': [ { 'email': e } for e in meeting.invitees if e != calendar ]
+        "summary": meeting.summary,
+        "location": location or "",
+        "description": description or "",
+        "start": {"dateTime": item(meeting.slots).start.isoformat()},
+        "end": {"dateTime": item(meeting.slots).end.isoformat()},
+        "attendees": [{"email": e} for e in meeting.invitees if e != calendar],
     }
 
-    return service.events().insert(calendarId = calendar, body = body).execute()
+    return service.events().insert(calendarId=calendar, body=body).execute()
 
 
-def working_slots(start_day, start_time, end_time, now, days=1, minutes=30, increment=15, daysofweek={0,1,2,3,4}):
+def working_slots(
+    start_day,
+    start_time,
+    end_time,
+    now,
+    days=1,
+    minutes=30,
+    increment=15,
+    daysofweek={0, 1, 2, 3, 4},
+):
     "Get all slots during working hours in a given time range."
     ss = []
     for d in range(days):
         day = start_day + timedelta(days=d)
         if day.weekday() in daysofweek:
-            start  = datetime.combine(day, start_time)
-            end    = datetime.combine(day, end_time)
+            start = datetime.combine(day, start_time)
+            end = datetime.combine(day, end_time)
             length = timedelta(minutes=minutes)
-            incr   = timedelta(minutes=increment)
+            incr = timedelta(minutes=increment)
 
             s = start
             while (s + length) <= end:
@@ -132,10 +160,10 @@ def schedules(meetings):
         yield meetings
 
     else:
-        unscheduled = [ m for m in meetings if len(meetings[m].slots) > 1 ]
+        unscheduled = [m for m in meetings if len(meetings[m].slots) > 1]
         for m in sorted(unscheduled, key=lambda m: len(meetings[m].slots)):
             for s in sorted(meetings[m].slots, key=lambda s: s.start):
-                copied = { m : meeting.copy() for m, meeting in meetings.items() }
+                copied = {m: meeting.copy() for m, meeting in meetings.items()}
                 yield from schedules(assign(copied, m, s))
 
 
@@ -146,7 +174,7 @@ def assign(meetings, m, s):
 
 def eliminate(meetings, m, fn):
     "Eliminate slots from meeting m and propagate consequences."
-    to_eliminate = { s for s in meetings[m].slots if fn(s) }
+    to_eliminate = {s for s in meetings[m].slots if fn(s)}
     if to_eliminate:
         meetings[m].slots -= to_eliminate
         left = len(meetings[m].slots)
@@ -156,8 +184,13 @@ def eliminate(meetings, m, fn):
         elif left == 1:
             s = item(meetings[m].slots)
             attendees = meetings[m].attendees
-            other_meetings = { m for m in meetings if attendees & meetings[m].attendees } - { m }
-            if not all(eliminate(meetings, m2, lambda x: x.overlaps(s)) for m2 in other_meetings):
+            other_meetings = {
+                m for m in meetings if attendees & meetings[m].attendees
+            } - {m}
+            if not all(
+                eliminate(meetings, m2, lambda x: x.overlaps(s))
+                for m2 in other_meetings
+            ):
                 return None
 
     return meetings
@@ -175,13 +208,15 @@ def schedule(meetings, start_day, start_time, end_time, days, now):
     # First fill in the basic slots for the desired length of meeting
     # and expand the attendees list.
     for m, meeting in meetings.items():
-        meeting.slots = set(working_slots(start_day, start_time, end_time, now, days, meeting.minutes))
+        meeting.slots = set(
+            working_slots(start_day, start_time, end_time, now, days, meeting.minutes)
+        )
         meeting.attendees = expand(meeting.invitees, groups)
 
     # Now that every meeting is set up we can eliminate busy times and
     # potentially take advantage of contstraint propagation.
     for m, meeting in meetings.items():
-        if not(eliminate_busy(meetings, m, busy_times)):
+        if not (eliminate_busy(meetings, m, busy_times)):
             return None
 
     return next(schedules(meetings), None)
@@ -191,7 +226,7 @@ def eliminate_busy(meetings, m, busy):
     "Eliminate the slots where one of the attendees is busy."
     meeting = meetings[m]
     for a in meeting.attendees:
-        to_eliminate = busy_slots(sorted(meeting.slots, key = lambda x: x.start), busy[a])
+        to_eliminate = busy_slots(sorted(meeting.slots, key=lambda x: x.start), busy[a])
         if not eliminate(meetings, m, lambda x: x in to_eliminate):
             return None
     return meetings
@@ -201,12 +236,13 @@ def expand(invitees, groups):
     "Expand the invitees (which may include groups) into actual people."
     expansion = set()
     for i in invitees:
-        expansion |= set(groups[i]) if i in groups else { i }
+        expansion |= set(groups[i]) if i in groups else {i}
     return expansion
 
 
 def busy_slots(slots, busy):
     "Find intervals in slots that overlap busy intervals."
+
     def walk(slots, busy):
         while slots and busy:
             s = slots[0]
@@ -223,62 +259,69 @@ def busy_slots(slots, busy):
 
 def print_schedule(meetings):
     "Print a human readable schedule."
-    for m in sorted(meetings.values(), key = lambda m: item(m.slots).start):
+    for m in sorted(meetings.values(), key=lambda m: item(m.slots).start):
         s = item(m.slots)
-        print('{:30} {} to {}'.format(
-            m.summary,
-            s.start.strftime('%a, %b %d %I:%M %p'),
-            s.end.strftime('%I:%M %p (%Z)')))
+        print(
+            "{:30} {} to {}".format(
+                m.summary,
+                s.start.strftime("%a, %b %d %I:%M %p"),
+                s.end.strftime("%I:%M %p (%Z)"),
+            )
+        )
 
 
-def schedule_meetings(meetings, calendar, location = None, description = None):
+def schedule_meetings(meetings, calendar, location=None, description=None):
     "Actually schedule the meetings on the given calendar at the given location."
-    for m in sorted(meetings.values(), key = lambda m: item(m.slots).start):
+    for m in sorted(meetings.values(), key=lambda m: item(m.slots).start):
         r = schedule_meeting(m, calendar, location, description)
         print(json.dumps(r, indent=2))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
-    import fileinput
     import re
-    import sys
     import argparse
 
-
-    pacific    = timezone(timedelta(hours=-8))
-    start_day  = datetime.today() # + timedelta(days=15)
+    pacific = timezone(timedelta(hours=-8))
+    start_day = datetime.today()  # + timedelta(days=15)
     start_time = time(9, 0, tzinfo=pacific)
-    end_time   = time(14, 0, tzinfo=pacific)
-    days       = 60
-    now        = datetime.now(tz=pacific)
+    end_time = time(14, 0, tzinfo=pacific)
+    days = 60
+    now = datetime.now(tz=pacific)
 
-    pat = re.compile(r'^\[(\d+)\] *(.*?): *(.*)$')
+    pat = re.compile(r"^\[(\d+)\] *(.*?): *(.*)$")
 
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("meetings",
-                   help="File containing meeting specs, one per line.",
-                   type=argparse.FileType())
-    p.add_argument("--dry-run",
-                   dest="dry_run",
-                   help="Just print a list of the times that would be scheduled.",
-                   action="store_true")
+    p.add_argument(
+        "meetings",
+        help="File containing meeting specs, one per line.",
+        type=argparse.FileType(),
+    )
+    p.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        help="Just print a list of the times that would be scheduled.",
+        action="store_true",
+    )
 
     args = p.parse_args()
 
     def to_meeting(line):
         m = pat.match(line)
-        return Meeting(m.group(2), int(m.group(1)), frozenset(re.split(r', *', m.group(3))))
+        return Meeting(
+            m.group(2), int(m.group(1)), frozenset(re.split(r", *", m.group(3)))
+        )
 
-    meetings = { id: to_meeting(line[:-1]) for id, line in enumerate(args.meetings) }
+    meetings = {id: to_meeting(line[:-1]) for id, line in enumerate(args.meetings)}
 
     meetings = schedule(meetings, start_day, start_time, end_time, days, now)
 
-
     if meetings is None:
-        print('No way to schedule all meetings. Maybe time to become a goat farmer.')
+        print("No way to schedule all meetings. Maybe time to become a goat farmer.")
     else:
         if args.dry_run:
             print_schedule(meetings)
         else:
-            schedule_meetings(meetings, 'example@example.org', description='Description')
+            schedule_meetings(
+                meetings, "example@example.org", description="Description"
+            )
