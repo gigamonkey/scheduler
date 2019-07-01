@@ -5,9 +5,10 @@ name = "pypi"
 
 [packages]
 arrow = "*"
+dataclasses = "*"
 google-api-python-client = "*"
 oauth2client = "*"
-dataclasses = "*"
+pyyaml = "*"
 
 [dev-packages]
 autoflake = "*"
