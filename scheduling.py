@@ -42,6 +42,10 @@ class Slot:
         "Does this slot overlap with the other slot."
         return self == other
 
+    def priority(self) -> int:
+        "Try higher priority (greater value) items first."
+        return 1
+
 
 @dataclass(frozen=True)
 class Participant:
@@ -110,7 +114,7 @@ def schedules(items: List[Meeting]) -> Iterator[List[Meeting]]:
     unscheduled = [i for i, item in enumerate(items) if item.unscheduled()]
     if unscheduled:
         for idx in sorted(unscheduled, key=lambda i: len(items[i].slots)):
-            for slot in items[idx].slots:
+            for slot in sorted(items[idx].slots, key=Slot.priority):
                 assigned = assign(items, idx, slot)
                 if assigned:
                     yield from schedules(assigned)

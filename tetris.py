@@ -70,6 +70,9 @@ class TimeSlot(Slot):
         x = "; ".join(f"{d.name} {weeks_desc(days[d])}" for d in days)
         return f"{self.hour:02d}:{self.minute:02d} ({self.duration} minutes) {x}"
 
+    def priority(self) -> int:
+        return self.duration * len(self.days)
+
 
 def weeks_desc(weeks):
     if weeks == set(range(6)):
