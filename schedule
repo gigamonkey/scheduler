@@ -3,9 +3,9 @@
 "Schedule a bunch of desired meetings."
 
 import json
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta
 
-import arrow
+import pendulum
 from apiclient.discovery import build
 from httplib2 import Http
 
@@ -39,7 +39,7 @@ class Interval:
         return not (self.before(other) or self.after(other))
 
     def from_calendar(cal):
-        return Interval(arrow.get(cal["start"]), arrow.get(cal["end"]))
+        return Interval(pendulum.parse(cal["start"]), pendulum.parse(cal["end"]))
 
 
 class Meeting:
@@ -86,7 +86,6 @@ def busy(emails, start_day, start_time, end_time, days):
                     start_day + timedelta(days=days), end_time
                 ).isoformat(),
                 "items": [{"id": e} for e in emails],
-                "timeZone": "-07:00",
             }
         )
         .execute()
@@ -282,8 +281,8 @@ if __name__ == "__main__":
     import re
     import argparse
 
-    pacific = timezone(timedelta(hours=-8))
-    start_day = datetime.today()  # + timedelta(days=15)
+    pacific = pendulum.timezone("US/Pacific")
+    start_day = datetime.today() + timedelta(days=1)
     start_time = time(9, 0, tzinfo=pacific)
     end_time = time(14, 0, tzinfo=pacific)
     days = 60
@@ -298,10 +297,15 @@ if __name__ == "__main__":
         type=argparse.FileType(),
     )
     p.add_argument(
-        "--dry-run",
-        dest="dry_run",
-        help="Just print a list of the times that would be scheduled.",
+        "--schedule",
+        dest="schedule",
+        help="Actually schedule meetings. Otherwise just print a list of the times that would be scheduled.",
         action="store_true",
+    )
+    p.add_argument(
+        "--calendar",
+        dest="calendar",
+        help="Email address of the calendar to create the meetings on.",
     )
 
     args = p.parse_args()
@@ -319,9 +323,8 @@ if __name__ == "__main__":
     if meetings is None:
         print("No way to schedule all meetings. Maybe time to become a goat farmer.")
     else:
-        if args.dry_run:
+        if not args.schedule:
+            print(f"Calendar: {args.calendar}")
             print_schedule(meetings)
         else:
-            schedule_meetings(
-                meetings, "example@example.org", description="Description"
-            )
+            schedule_meetings(meetings, args.calendar)
