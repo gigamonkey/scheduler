@@ -17,7 +17,7 @@ https://support.google.com/googleapi/answer/6158849.
 Then run:
 
 ```
-./schedule --dry-run meetings.txt
+./schedule meetings.txt
 ```
 
 to see when it would schedule the meetings where `meetings.txt` is a
@@ -35,7 +35,7 @@ the colon is a comma-delimited list of attendees.
 Run:
 
 ```
-./schedule meetings.txt
+./schedule --schedule meetings.txt
 ```
 
 to actually schedule them on people's calendars.
