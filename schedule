@@ -297,16 +297,15 @@ if __name__ == "__main__":
         type=argparse.FileType(),
     )
     p.add_argument(
-        "--schedule",
-        dest="schedule",
-        help="Actually schedule meetings. Otherwise just print a list of the times that would be scheduled.",
-        action="store_true",
-    )
-    p.add_argument(
         "--calendar",
         dest="calendar",
-        help="Email address of the calendar to create the meetings on.",
+        help="Email address of the calendar to create the meetings on. If not provided, just print times meetings would be scheduled.",
     )
+    p.add_argument(
+        "--description",
+        dest="description",
+        help="Description for meeting.",
+        default="")
 
     args = p.parse_args()
 
@@ -323,8 +322,7 @@ if __name__ == "__main__":
     if meetings is None:
         print("No way to schedule all meetings. Maybe time to become a goat farmer.")
     else:
-        if not args.schedule:
-            print(f"Calendar: {args.calendar}")
+        if not args.calendar:
             print_schedule(meetings)
         else:
-            schedule_meetings(meetings, args.calendar)
+            schedule_meetings(meetings, args.calendar, description=args.description)
