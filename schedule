@@ -278,8 +278,8 @@ def schedule_meetings(meetings, calendar, location=None, description=None):
 
 if __name__ == "__main__":
 
-    import re
     import argparse
+    import re
 
     pacific = pendulum.timezone("US/Pacific")
     start_time = time(9, 0, tzinfo=pacific)
