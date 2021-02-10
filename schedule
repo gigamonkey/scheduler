@@ -282,7 +282,6 @@ if __name__ == "__main__":
     import argparse
 
     pacific = pendulum.timezone("US/Pacific")
-    start_day = datetime.today() + timedelta(days=1)
     start_time = time(9, 0, tzinfo=pacific)
     end_time = time(14, 0, tzinfo=pacific)
     days = 60
@@ -306,8 +305,15 @@ if __name__ == "__main__":
         dest="description",
         help="Description for meeting.",
         default="")
+    p.add_argument(
+        "--start",
+        dest="start",
+        help="First possible day.")
+
 
     args = p.parse_args()
+
+    start_day = pendulum.parse(args.start, tz=pacific) if args.start else pendulum.today()
 
     def to_meeting(line):
         m = pat.match(line)
