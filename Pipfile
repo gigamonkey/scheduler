@@ -12,7 +12,7 @@ pendulum = "*"
 
 [dev-packages]
 autoflake = "*"
-black = "==19.3b0"
+black = "==20.8b1"
 flake8 = "*"
 hypothesis = "*"
 isort = "*"
@@ -20,4 +20,4 @@ mypy = "*"
 pytest = "*"
 
 [requires]
-python_version = "3.7"
+python_version = "3.9"
