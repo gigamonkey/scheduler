@@ -35,8 +35,8 @@ the colon is a comma-delimited list of attendees.
 Run:
 
 ```
-./schedule --calendar your.email@example.com meetings.txt
+./schedule --calendar sally@example.com meetings.txt
 ```
 
-Where `your.email@example.com` is the calendar you want to schedule on
+Where `sally@example.com` is the calendar you want to schedule on
 (presumably yours) to actually schedule them on people's calendars.
